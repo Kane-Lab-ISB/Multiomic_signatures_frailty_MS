@@ -1,0 +1,433 @@
+---
+title: "UKbiobank_FI_calculation"
+author: "Dantong Zhu"
+date: "2025-11-03"
+output:
+  html_document:
+    css: style.css
+    fig_caption: yes
+    highlight: tango
+    keep_md: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+    toc_depth: 3
+    self_contained: yes
+    code_folding: hide
+  word_document:
+    toc: yes
+    toc_depth: '3'
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE,
+                      eval = TRUE)
+library(ggplot2)
+library(dplyr)
+library(ggpubr)
+library(gtsummary)
+library(ggfortify)
+```
+
+# 1. data from UKBiobank with followup, 105 fields
+```{r}
+ukbiobank_dat = read.csv("~/Frailty-Phenotypes.tsv", sep = "\t") ## include data field needed for 49 FI items (Williams et al., 2019)
+assess_date_dat = read.csv("~/UKBB_Frailty-Phenotypes_visitingDates.tsv", sep = "\t") ## assessment date for instance0-3
+genetic_pc_dat = read.csv("~/GeneticPCA_data_Feb25.csv") ## Genetic PCs 
+#dim(ukbiobank_dat) 
+# 502527     258
+ukbiobank_dat = ukbiobank_dat %>%
+  mutate(participant.p6150_i3 = NA) # add participant.p6150_i3 for convenience
+```
+
+# 2. 22 + 3 items use fiels 20002.0.x 
+```{r}
+#instance 0, 1, 2, 3
+FI_calculation_instances = lapply(c(0, 1, 2, 3), function(instance) {
+  instance_col = colnames(ukbiobank_dat)[grep(paste0("i", instance), colnames(ukbiobank_dat), fixed = FALSE)]
+  FI_dat_instance = ukbiobank_dat %>%
+    dplyr::select(participant.eid, participant.p31, participant.p34, all_of(instance_col))
+  #participant.p20002_i0_ax, x = 0:33. multiple FI items use these field 
+  # if any fields eqauls to a certain number
+  ## note change at the last step, only based on the first df created. 
+  p20002_cols = paste0("participant.p20002_i", instance, "_a", 0:33)
+  # 22 items
+  disease_code_single = c("1277", #1. glaucoma, any fields == "1277"
+                        "1278", #2. cataracts, any fields == "1278"
+                        "1075", #9. MI, any fields == "1075"
+                        "1074", #10. Angina, any fields == "1074"
+                        "1065", #12. high bp, any fields == "1065"
+                        "1464", #13. Rheumatoid arthritis, any fields == "1464"
+                        "1465", #14. Osteoarthritis , any fields == "1465"
+                        "1466", #15. Gout , any fields == "1466"
+                        "1476", #18. Sciatica , any fields == "1476"
+                        "1094", #23. deep vein thrombosis, any fields == "1094"
+                        "1113", #24. Emphysema, any fields == "1113"
+                        "1111", #25. Asthma, any fields == "1111"
+                        "1226", #27. Hypothyroidism, any fields == "1226"
+                        "1287", #30. severe anxiety, any fields == "1287"
+                        "1398", #42. pneumonia, any fields == "1398"
+                        "1138", #43. gastric reflux, any files == "1138"
+                        "1474", #44. Hiatus hernia, any files == "1474"
+                        "1458", #45. diverticulitis, any files == "1458"
+                        "1162", #46. gall stones, any fields == "1162"
+                        "1453", #47. psoriasis, any fields == "1453"
+                        "1309", #48. isteoporosis, any fields == "1309"
+                        "1265"  #49. migraine, any fields == "1265"
+                        )
+#disease_code_double = list("1583" | "1081", 11. Stroke, any fields == "1583" | "1081"
+ #                          "1220" | "1223", 19. Sciatica , any fields == "1220" | "1223"
+  #                         "1452" | "1387", 26. Allergies, any fields == "1452" | "1387")
+  FI_dat_20002_single = lapply(disease_code_single, function(x) {
+    df = FI_dat_instance %>%
+       dplyr::select(all_of(p20002_cols)) %>%
+       mutate(item_20002_n = rowSums(. == x, na.rm = TRUE)) %>%
+       mutate(item_20002 = case_when(
+         item_20002_n == 0 ~ 0,
+         item_20002_n > 0 ~ 1
+       ))
+    df_return = df[, "item_20002"]
+    return(df_return)
+  })
+
+  FI_dat_20002_item11 = FI_dat_instance %>%
+       dplyr::select(all_of(p20002_cols)) %>%
+               mutate(item11_20002_n = rowSums(. == "1583" |. == "1081", na.rm = TRUE)) %>% #11. Stroke, any fields == "1583" | "1081"
+               mutate(item11_20002 = case_when(
+                 item11_20002_n == 0 ~ 0,
+                 item11_20002_n > 0 ~ 1
+               ))
+
+  FI_dat_20002_item19 = FI_dat_instance %>%
+       dplyr::select(all_of(p20002_cols)) %>%
+               mutate(item19_20002_n = rowSums(. == "1220" |. == "1223", na.rm = TRUE)) %>% #19. Sciatica , any fields == "1220" | "1223"
+               mutate(item19_20002 = case_when(
+                 item19_20002_n == 0 ~ 0,
+                 item19_20002_n > 0 ~ 1
+               ))
+
+  FI_dat_20002_item26 = FI_dat_instance %>%
+       dplyr::select(all_of(p20002_cols)) %>%
+               mutate(item26_20002_n = rowSums(. == "1452" | . == "1387", na.rm = TRUE)) %>% #26. Allergies, any fields == "1452" | "1387"
+               mutate(item26_20002 = case_when(
+                 item26_20002_n == 0 ~ 0,
+                 item26_20002_n > 0 ~ 1
+               )) 
+
+  FI_dat_20002_double = list(FI_dat_20002_item11[, "item11_20002"],
+                           FI_dat_20002_item19[, "item19_20002"],
+                           FI_dat_20002_item26[, "item26_20002"])
+
+  FI_dat_20002_all = cbind(Reduce(cbind, FI_dat_20002_single), Reduce(cbind, FI_dat_20002_double)) %>%
+                   as.data.frame()
+
+  colnames(FI_dat_20002_all) = c(paste0("item", c(1, 2, 9, 10, 12, 13, 14,
+                                                15, 18, 23, 24, 25, 27, 30,
+                                                42, 43, 44, 45, 46, 47, 48, 49), "_20002"), 
+                               "item11_20002", 
+                               "item19_20002", 
+                               "item26_20002")
+  FI_dat_calc = cbind(FI_dat_instance, FI_dat_20002_all) %>%
+                  as.data.frame()
+  #remove "i0" from colnames(FI_dat_calc) 
+  # remove "participant" from colnames
+  colnames(FI_dat_calc) = gsub(paste0("_i", instance), "", colnames(FI_dat_calc))
+  colnames(FI_dat_calc) = gsub("participant.", "", colnames(FI_dat_calc))
+  FI_dat_items = FI_dat_calc %>% 
+       mutate(item1 = case_when(
+         grepl("2", p6148) | item1_20002 == 1 ~ 1,
+         #f.6148.0.0 == 2 | f.6148.0.1 == 2 | item1_20002 == 1 ~ 1,
+         p2227 == 0 | grepl("-7", p6148) | (!grepl("-3", p6148) & p2227 != -3) | (is.na(p20002_a0) == FALSE & grepl("-1", p6148)) ~ 0,
+         grepl("-3", p6148) | grepl("-1", p6148) ~ NA)) %>%
+       mutate(item2 = case_when(
+         grepl("4", p6148) | item2_20002 == 1 ~ 1,
+         #f.6148.0.0 == 4 | f.6148.0.1 == 4 | f.6148.0.2 == 4 | f.6148.0.3 == 4 | item2_20002 == 1 ~ 1,
+         p2227 == 0 | grepl("-7", p6148) | (!grepl("-3", p6148) & p2227 != -3) | (is.na(p20002_a0) == FALSE & grepl("-1", p6148)) ~ 0,
+         grepl("-3", p6148) | grepl("-1", p6148) ~ NA)) %>%
+      mutate(item3 = case_when(
+         p2247 == 1 | p2247 == 99 ~ 1,
+         p2247 == 0 ~ 0
+      )) %>%
+      mutate(item4 = case_when(
+         p2188 == 1 ~ 1,
+         p2188 == 0 ~ 0
+      )) %>%
+      mutate(item5 = case_when(
+         p2178 == 1 ~ 0,
+         p2178 == 2 ~ 0.25,
+         p2178 == 3 ~ 0.5,
+         p2178 == 4 ~ 1
+      )) %>%
+      mutate(item6 = case_when(
+         p2296 == 1 ~ 0,
+         p2296 == 2 ~ 0.5,
+         p2296 == 3 ~ 1
+      )) %>%
+      mutate(item7 = case_when(
+         p2316 == 1 ~ 1,
+         p2316 == 0 ~ 0
+      )) %>%
+      mutate(item8 = case_when(
+         p2080 == 1 ~ 0,
+         p2080 == 2 ~ 0.25,
+         p2080 == 3 ~ 0.75, 
+         p2080 == 4 ~ 1
+      )) %>%
+      mutate(item9 = case_when(
+         grepl("1", p6150) | item9_20002 == 1 ~ 1,
+         grepl("-7", p6150) | grepl("2", p6150) | grepl("3", p6150) | grepl("4", p6150) ~ 0
+      )) %>%
+      mutate(item10 = case_when(
+        grepl("2", p6150) | item10_20002 == 1 ~ 1,
+         #p6150.0.0 == 2 | f.6150.0.1 == 2 | f.6150.0.2 == 2 | f.6150.0.3 == 2 | item10_20002 == 1 ~ 1,
+        grepl("-7", p6150) | grepl("1", p6150) | grepl("3", p6150) | grepl("4", p6150) ~ 0
+      )) %>%
+      mutate(item11 = case_when(
+        grepl("3", p6150) | item11_20002 == 1 ~ 1,
+        #f.6150.0.0 == 3 | f.6150.0.1 == 3 | f.6150.0.2 == 3 | item11_20002 == 1 ~ 1,
+        grepl("-7", p6150) | grepl("1", p6150) | grepl("2", p6150) | grepl("4", p6150) ~ 0
+      )) %>%
+      mutate(item12 = case_when(
+        grepl("4", p6150) | item12_20002 == 1 ~ 1,
+        #f.6150.0.0 == 4 | f.6150.0.1 == 4 | f.6150.0.2 == 4 | f.6150.0.3 == 4 | item12_20002 == 1 ~ 1,
+        grepl("-7", p6150) | grepl("1", p6150) | grepl("2", p6150) | grepl("3", p6150) ~ 0
+      )) %>%
+      mutate(item13 = case_when(
+         item13_20002 == 1 ~ 1,
+         p2473 == -3 ~ NA,
+         .default = 0
+      )) %>%
+      mutate(item14 = case_when(
+         item14_20002 == 1 ~ 1,
+         p2473 == -3 ~ NA,
+         .default = 0
+      )) %>%
+      mutate(item15 = case_when(
+         item15_20002 == 1 ~ 1,
+         p2473 == -3 ~ NA,
+         .default = 0
+      )) %>%
+      mutate(item16 = case_when(
+     !grepl("-7", p6149) & !grepl("-3", p6149) & is.na(p6149) == FALSE ~ 1,
+      grepl("-7", p6149) ~ 0
+      )) %>%
+      mutate(item17 = case_when(
+        p2335 == 1 ~ 1,
+        p2335 == 0 ~ 0
+      )) %>%
+      mutate(item18 = case_when(
+        item18_20002 == 1 ~ 1,
+        p2473 == -3 ~ NA,
+        .default = 0
+      )) %>%
+      mutate(item19 = case_when(
+        p2443 == 1 | item19_20002 == 1 ~ 1,
+        p2443 == 0 | (is.na(p20002_a0) == FALSE & p2443 == -1) ~ 0
+      )) %>%
+      mutate(item20 = case_when(
+        p2453 == 1 | p134 >= 1 ~ 1,
+        p2453 == 0 | p134 == 0 ~ 0
+      )) %>%
+      mutate(item21 = case_when(
+        p134 > 1 ~ 1,
+        p134 == 0 | p134 == 1 ~ 0
+      )) %>%
+      mutate(item22 = case_when(
+        p2463 == 1 ~ 1,
+        p2463 == 0 ~ 0
+      )) %>%
+      mutate(item23 = case_when(
+        grepl("5", p6152) | item23_20002 == 1 ~ 1,
+        #f.6152.0.0 == 5 | f.6152.0.1 == 5 | f.6152.0.2 == 5 | f.6152.0.3 == 5 | f.6152.0.4 == 5 | item23_20002 == 1 ~ 1,
+        grepl("-7", p6152) | (!grepl("-3", p6152) & !grepl("5", p6152) & is.na(p6152) == FALSE) ~ 0
+      )) %>%
+      mutate(item24 = case_when(
+        grepl("6", p6152) | item24_20002 == 1 ~ 1,
+        #f.6152.0.0 == 6 | f.6152.0.1 == 6 | f.6152.0.2 == 6 | item24_20002 == 1 ~ 1,
+        grepl("-7", p6152) | (!grepl("-3", p6152) & !grepl("6", p6152) & is.na(p6152) == FALSE) ~ 0
+      )) %>%
+      mutate(item25 = case_when(
+        grepl("8", p6152) | item25_20002 == 1 ~ 1,
+        #f.6152.0.0 == 8 | f.6152.0.1 == 8 | f.6152.0.2 == 8 | f.6152.0.3 == 8 | item25_20002 == 1 ~ 1,
+        grepl("-7", p6152) | (!grepl("-3", p6152) & !grepl("8", p6152) & is.na(p6152) == FALSE) ~ 0
+      )) %>%
+     mutate(item26 = case_when(
+        grepl("9", p6152) | item26_20002 == 1 ~ 1,
+       #f.6152.0.0 == 9 | f.6152.0.1 == 9 | f.6152.0.2 == 9 | f.6152.0.3 == 9 | f.6152.0.4 == 9 | item26_20002 == 1 ~ 1,
+        grepl("-7", p6152) | (!grepl("-3", p6152) & !grepl("9", p6152) & is.na(p6152) == FALSE) ~ 0
+     )) %>%
+     mutate(item27 = case_when(
+        item27_20002 == 1 ~ 1,
+        p2473 == -3 ~ NA,
+        .default = 0
+     )) %>%
+     mutate(item28 = case_when(
+       p2050 == 1 ~ 0,
+       p2050 == 2 ~ 0.5,
+       p2050 == 3 ~ 0.75,
+       p2050 == 4 ~ 1
+     )) %>%
+     mutate(item29 = case_when(
+       p1970 == 1 ~ 1,
+       p1970 == 0 ~ 0
+     )) %>%
+     mutate(item30 = case_when(
+       item30_20002 == 1 ~ 1,
+       p2473 == -3 ~ NA,
+       .default = 0
+     )) %>%
+     mutate(item31 = case_when(
+       p1930 == 1 ~ 1,
+       p1930 == 0 ~ 0
+     )) %>%
+     mutate(item32 = case_when(
+       p2020 == 1 ~ 1,
+       p2020 == 0 ~ 0
+     )) %>%
+     mutate(item33 = case_when(
+       grepl("1", p6159) | grepl("3", p6159) ~ 1,
+      #f.6159.0.0 == 1 | f.6159.0.0 == 3 | f.6159.0.1 == 1 | f.6159.0.1 == 3 | f.6159.0.2 == 1 | f.6159.0.2 == 3 ~ 1,
+       grepl("-3", p6159) ~ NA,
+       is.na(p6159) == FALSE ~ 0
+     )) %>%
+     mutate(item34 = case_when(
+       grepl("4", p6159) ~ 1, 
+       #f.6159.0.0 == 4 | f.6159.0.1 == 4 | f.6159.0.2 == 4 | f.6159.0.3 == 4 ~ 1,
+       grepl("-3", p6159) ~ NA,
+       is.na(p6159) == FALSE ~ 0
+     )) %>%
+     mutate(item35 = case_when(
+       grepl("5", p6159) ~ 1, 
+       #f.6159.0.0 == 5 | f.6159.0.1 == 5 | f.6159.0.2 == 5 | f.6159.0.3 == 5 | f.6159.0.4 == 5 ~ 1,
+       grepl("-3", p6159) ~ NA,
+       is.na(p6159) == FALSE ~ 0
+     )) %>%
+     mutate(item36 = case_when(
+       grepl("6", p6159) ~ 1,
+       #f.6159.0.0 == 6 | f.6159.0.1 == 6 | f.6159.0.2 == 6 | f.6159.0.3 == 6 | f.6159.0.4 == 6 | f.6159.0.5 == 6 ~ 1,
+       grepl("-3", p6159) ~ NA,
+       is.na(p6159) == FALSE ~ 0
+     )) %>%
+     mutate(item37 = case_when(
+       grepl("7", p6159) ~ 1,  
+    #f.6159.0.0 == 7 | f.6159.0.1 == 7 | f.6159.0.2 == 7 | f.6159.0.3 == 7 | f.6159.0.4 == 7 | f.6159.0.5 == 7 | f.6159.0.6 == 7 ~ 1,
+       grepl("-3", p6159) ~ NA,
+       is.na(p6159) == FALSE ~ 0
+     )) %>%
+     mutate(item38 = case_when(
+       grepl("8", p6159) ~ 1,
+       grepl("-3", p6159) ~ NA,
+       is.na(p6159) == FALSE ~ 0
+     )) %>%
+     mutate(item39 = case_when(
+       grepl("2", p6159) ~ 1, 
+    #f.6159.0.0 == 2 | f.6159.0.1 == 2 | f.6159.0.2 == 2 | f.6159.0.3 == 2 | f.6159.0.4 == 2 | f.6159.0.5 == 2 | f.6159.0.6 == 2 ~ 1,
+       grepl("-3", p6159) ~ NA,
+       grepl("-7", p6159) | (is.na(p6159) == FALSE & !grepl("2", p6159)) ~ 0 
+     )) %>%
+     mutate(item40 = case_when(
+       p1200 == 1 ~ 0,
+       p1200 == 2 ~ 0.5,
+       p1200 == 3 ~ 1
+     )) %>%
+     mutate(item41 = case_when(
+       grepl("1", p6153) | grepl("1", p6177) ~ 1,
+       !grepl("1", p6153) & !grepl("1", p6177) ~ 0,
+       grepl("-3", p6153) | grepl("-1", p6153) | grepl("-3", p6177) | grepl("-1", p6177) ~ NA
+     )) %>%
+     mutate(item42 = case_when(
+       item42_20002 == 1 ~ 1,
+       p2473 == -3 ~ NA,
+       .default = 0
+     )) %>%
+     mutate(item43 = case_when(
+       item43_20002 == 1 ~ 1,
+       p2473 == -3 ~ NA,
+       .default = 0
+     )) %>%
+     mutate(item44 = case_when(
+       item44_20002 == 1 ~ 1,
+       p2473 == -3 ~ NA,
+       .default = 0
+     )) %>%
+     mutate(item45 = case_when(
+       item45_20002 == 1 ~ 1,
+       p2473 == -3 ~ NA,
+       .default = 0
+     )) %>%
+     mutate(item46 = case_when(
+       item46_20002 == 1 ~ 1,
+       p2473 == -3 ~ NA,
+       .default = 0
+     )) %>%
+    mutate(item47 = case_when(
+      item47_20002 == 1 ~ 1,
+      p2473 == -3 ~ NA,
+      .default = 0
+    )) %>%
+    mutate(item48 = case_when(
+      item48_20002 == 1 ~ 1,
+      p2473 == -3 ~ NA,
+      .default = 0
+    )) %>%
+    mutate(item49 = case_when(
+      item49_20002 == 1 ~ 1,
+      p2473 == -3 ~ NA,
+      .default = 0
+    ))
+  return(FI_dat_items)
+})
+```
+
+# 3. four instances, missingness exclusion
+```{r}
+instance0_dat = FI_calculation_instances[[1]]
+rownames(instance0_dat) = ukbiobank_dat$participant.eid
+instance0_items_eligible = instance0_dat %>%
+                        dplyr::select(all_of(paste0("item", 1:49))) %>%
+                        mutate(sum = rowSums(., na.rm = TRUE), 
+                          num_n = rowSums(is.na(.) == TRUE)) %>%
+                      mutate(eid = ukbiobank_dat$participant.eid) %>%
+                      filter(num_n <= 9) %>%
+                      mutate(FI_score = sum/(49 - num_n)) %>%
+  mutate(instance = "instance0")
+
+instance1_dat = FI_calculation_instances[[2]]
+rownames(instance1_dat) = ukbiobank_dat$participant.eid
+instance1_items_eligible = instance1_dat %>%
+                        dplyr::select(all_of(paste0("item", 1:49))) %>%
+                        mutate(sum = rowSums(., na.rm = TRUE), 
+                          num_n = rowSums(is.na(.) == TRUE)) %>%
+                      mutate(eid = ukbiobank_dat$participant.eid) %>%
+                      filter(num_n <= 9) %>%
+                      mutate(FI_score = sum/(49 - num_n)) %>%
+  mutate(instance = "instance1")
+
+instance2_dat = FI_calculation_instances[[3]]
+rownames(instance2_dat) = ukbiobank_dat$participant.eid
+instance2_items_eligible = instance2_dat %>%
+                        dplyr::select(all_of(paste0("item", 1:49))) %>%
+                        mutate(sum = rowSums(., na.rm = TRUE), 
+                          num_n = rowSums(is.na(.) == TRUE)) %>%
+                      mutate(eid = ukbiobank_dat$participant.eid) %>%
+                      filter(num_n <= 9) %>%
+                      mutate(FI_score = sum/(49 - num_n)) %>%
+  mutate(instance = "instance2")
+
+instance3_dat = FI_calculation_instances[[4]]
+rownames(instance3_dat) = ukbiobank_dat$participant.eid
+instance3_items_eligible = instance3_dat %>%
+                        dplyr::select(all_of(paste0("item", 1:49))) %>%
+                        dplyr::select(-c(item9, item10, item11, item12)) %>%
+                        mutate(sum = rowSums(., na.rm = TRUE), 
+                          num_n = rowSums(is.na(.) == TRUE)) %>%
+                      mutate(eid = ukbiobank_dat$participant.eid) %>%
+                      filter(num_n <= 8) %>%
+                      mutate(FI_score = sum/(45 - num_n)) %>%
+  mutate(instance = "instance3")
+```
